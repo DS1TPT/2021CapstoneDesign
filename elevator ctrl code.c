@@ -1,6 +1,7 @@
 /* Atmega2560 마이크로 컨트롤러는 8비트이므로 기본 데이터 타입은 최적화를 위해 바이트(unsigned char)로 함. */
 
-/* 현재 모든 주석과 코드는 모두 실제 하드웨어가 없는 상태에서 짜여 있으므로 참고용으로만 사용할 것 */
+/* 현재 모든 주석과 코드는 실제 하드웨어에서 테스트를 하지 않았음. 유의 바람 */
+/* 문의 열림과 닫힘을 감지할 센서를 부착하기 어려운 경우 문짝 모터는 일정 스텝만큼 구동하도록 함. */
 
 /*
 아두이노 메가 핀 번호
@@ -13,7 +14,8 @@ I2C 통신 핀: 20(SCA), 21(SCL)
 */
 
 /*
-버튼 아날로그 검출용으로 저항을 쓸 경우 저항값은 10kOhm으로 한다.
+• 버튼 아날로그 검출용으로 저항을 쓸 경우 저항값은 10kOhm으로 한다.
+• 호출 버튼과 목적지 버튼은 인터럽트 구현을 위해 모두 인터럽트 핀에 연결한다. 다이오드를 사용한다(오류 방지)
 */
 
 /* 코드 시작 부분 */
@@ -82,6 +84,8 @@ I2C 통신 핀: 20(SCA), 21(SCL)
 #define BTN_CALL "A0"
 #define BTN_DEST "A1"
 */
+
+/* 디지털 구현이 어려운 경우 적외선 센서는 아날로그로 구현할 수 있도록 한다.  */
 
 typedef unsigned char BYTE; /* 바이트는 부호 없는 char */
 typedef BYTE BOOL; /* 부울 자료형의 형식을 바이트로 지정 */
@@ -212,13 +216,23 @@ void setup() {
 }
 
 void getFloor(void) { /* 층수 구하고 FND로 표시하는 함수 */
-    if (digitalRead(IR_SNSR_1) == 1) currFloor = 1;
-    else if (digitalRead(IR_SNSR_2) == 1) currFloor = 2;
-    else if (digitalRead(IR_SNSR_3) == 1) currFloor = 3;
-    else if (digitalRead(IR_SNSR_4) == 1) currFloor = 4;
-    else {
-        /* 고장 운전 시행. 1층으로 복귀 후 문을 열고 운행 정지 */
+    if (digitalRead(IR_SNSR_1) == 1) {
+        currFloor = 1;
+        fndDrv(1);
     }
+    else if (digitalRead(IR_SNSR_2) == 1) {
+        currFloor = 2;
+        fndDrv(2);
+    }
+    else if (digitalRead(IR_SNSR_3) == 1) {
+        currFloor = 3;
+        fndDrv(3);
+    }
+    else if (digitalRead(IR_SNSR_4) == 1) {
+        currFloor = 4;
+        fndDrv(4);
+    }
+    /* 구현이 가능한 경우 센서 고장 운전을 구현한다.  */
     /* 층수 표시 부분 구현하기 */
     return;
 }
@@ -228,18 +242,21 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
         case STOP:
         nemaMain.DutyCycle(0, 0);
         carStat = STOP;
+        isMoving = FALSE;
         break;
 
         case UP:
         nemaMain.Direction(0, REVERSE);
         nemaMain.DutyCycle(0, nemaMainSpd);
         carStat = UP;
+        isMoving = TRUE;
         break;
 
         case DN:
         nemaMain.Direction(0, FORWARD);
         nemaMain.DutyCycle(0, nemaMainSpd);
         carStat = DN;
+        isMoving = TRUE;
         break;
 
         /* 이 아래부턴 실험해야함  */
@@ -307,41 +324,36 @@ void doorDrv(BOOL op) { /* 문 구동용 함수 */
     }
     else if (doorStat == CLOSE && op == CLOSE) return;
     else if (doorStat == OPEN && op == OPEN) return;
-    else {
-        /* 오류 발생, 문을 열었다가 다시 닫음 */
-    }
-
-    switch(doorstat) {
-        case STOP:
-        nemaMain.DutyCycle(0, 0);
-        break;
-
-        case UP:
-        nemaMain.Direction(0, REVERSE);
-        nemaMain.DutyCycle(0, nemaMainSpd);
-        break;
-
-        case DN:
-        nemaMain.Direction(0, FORWARD);
-        nemaMain.DutyCycle(0, nemaMainSpd);
-        break;
-    }
 }
 
 BOOL chkDest(void) { /* 현재 층수가 호출된/목적지 층수인지를 확인한다. */
     if (digitalRead(irDist1) == 1 && (arrDest[0] == TRUE || arrCall[0] == TRUE)) {
         preciseMotorCtrl(1);
+        arrCall[0] = FALSE;
+        arrDest[0] = FALSE;
+        return TRUE;
     }
-    else if (digitalRead(irDist2) == 1 && (arrDest[1] == TRUE || arrCall[1] == TRUE)) {
+    else if (digitalRead(irDist2) == 1 && (arrDest[1] == TRUE || arrCall[1] == TRUE && carStat == UP || arrCall[3] && carStat == DN)) {
         preciseMotorCtrl(2);
+        if (carStat == UP) arrCall[1] = FALSE;
+        else if (carStat == DN) arrCall[3] = FALSE;
+        arrDest[1] = FALSE;
+        return TRUE;
     }
-    else if (digitalRead(irDist3) == 1 && (arrDest[2] == TRUE || arrCall[2] == TRUE)) {
+    else if (digitalRead(irDist3) == 1 && (arrDest[2] == TRUE || arrCall[2] && carStat == UP || arrCall[4] && carStat == DN)) {
         preciseMotorCtrl(3);
+        if (carStat == UP) arrCall[2] = FALSE;
+        else if (carStat == DN) arrCall[4] = FALSE;
+        arrDest[2] = FALSE;
+        return TRUE;
     }
     else if (digitalRead(irDist4) == 1 && (arrDest[3] == TRUE || arrCall[3] == TRUE)) {
         preciseMotorCtrl(4);
+        arrCall[5] = FALSE;
+        arrDest[3] = FALSE;
+        return TRUE;
     }
-    /* 완성 안됨 */
+    return FALSE;
 }
 
 BYTE chkUpDn(void) { /* 상승/하강 결정 함수 */ /* 디버깅 필요 */
@@ -388,6 +400,7 @@ void preciseMotorCtrl(BYTE floor) { /* 모터 정밀제어 함수 */
         while (digitalRead(IR_SNSR_4)) (void) "고자라니"
         break;
     }
+    motorDrv(STOP);
     return;
 }
 
@@ -403,6 +416,10 @@ void fndDrv(BYTE floorNum) { /* 7seg 구동 */
 void loop(void) { 
     if (isMoving) {
         chkDest();
+        if (isMoving) }
+            getFloor();
+            return;
+		}
         switch (currFloor) {
             case 1:
             digitalWrite(LEDB1, LOW);
@@ -427,7 +444,6 @@ void loop(void) {
             break;
         }
         doorDrv();
-        carStat = STOP;
         return;
     } else {
         for (int i = 0; i < 4; i++) { /* 움직여야 하는가?, 목적지 입력 확인 */
