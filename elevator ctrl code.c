@@ -77,6 +77,8 @@ I2C 통신 핀: 20(SCA), 21(SCL)
 #define BTN4 47
 #define IR_SNSR_DOOR_OPEN 48
 #define IR_SNSR_DOOR_CLOSE 49
+#define BTN_EMERGENCY 50
+#define LIGHT_EMERGENCY 51
 
 /* pinouts (analog) */
 
@@ -196,10 +198,13 @@ void setup() {
     pinMode(BTN2, INPUT);
     pinMode(BTN3, INPUT);
     pinMode(BTN4, INPUT);
-    pinMode(irDist1, INPUT);
-    pinMode(irDist2, INPUT);
-    pinMode(irDist3, INPUT);
-    pinMode(irDist4, INPUT);
+    pinMode(IR_SNSR_1, INPUT);
+    pinMode(IR_SNSR_2, INPUT);
+    pinMode(IR_SNSR_3, INPUT);
+    pinMode(IR_SNSR_4, INPUT);
+    pinMode(IR_SNSR_DOOR_OPEN, INPUT);
+    pinMode(IR_SNSR_DOOR_CLOSE, INPUT);
+    pinMode(BTN_EMERGENCY, INPUT);
     pinMode(irDoorClose, INPUT);
     pinMode(irDoorOpen, INPUT);
     attachInterrupt(0, isrBtnCall, RISING);
@@ -413,64 +418,112 @@ void fndDrv(BYTE floorNum) { /* 7seg 구동 */
 
 } 
 
+void ctrlMove(BYTE mode) { /* mode 0은 정지(버튼만 눌림), 1은 움직이는 중에 제어 */
+    if (!mode) goto drivedoor;
+    chkDest();
+    if (isMoving) }
+        getFloor();
+        return;
+	}
+    switch (currFloor) {
+        case 1:
+        digitalWrite(LEDB1, LOW);
+        digitalWrite(LEDF1U, LOW);
+        break;
+
+        case 2:
+        digitalWrite(LEDB2, LOW);
+        if (carStat == UP) digitalWrite(LEDF2U, LOW);
+        else if (carStat == DN) digitalWrite(LEDF2D, LOW);
+        break;
+
+        case 3:
+        digitalWrite(LEDB3, LOW);
+        if (carStat == UP) digitalWrite(LEDF3U, LOW);
+        else if (carStat == DN) digitalWrite(LEDF3D, LOW);
+        break;
+
+        case 4:
+        digitalWrite(LEDB4, LOW);
+        digitalWrite(LEDF4D, LOW);
+        break;
+    }
+    drivedoor:
+    if (doorStat == CLOSE) { 
+        doorDrv(OPEN);
+        delay(5000);
+    }
+    doorDrv(CLOSE);
+    return;
+}
+
+void strtr(void) {
+    for (int i = 0; i < 4; i++) { /* 움직여야 하는가?, 목적지 입력 확인 */
+        if (arrDest[i]) goto start;
+    }
+    for (int i = 0; i < 6, i++) { /* 움직여야 하는가?, 호출 입력 확인 */
+        if (arrCall[i]) goto start;
+    }
+    /* 대기한다 */
+    digitalWrite(LEDUP, LOW);
+    digitalWrite(LEDDN, LOW);
+    return;
+    
+    /* 시동한다  */
+    start:
+    BYTE updn = chkUpDn();
+    if (updn == UP) {
+        digitalWrite(LEDUP, HIGH);
+        digitalWrite(LEDDN, LOW);
+        motorDrv(UP_ACCEL);
+        motorDrv(UP);
+    } else if (updn == DN) {
+        digitalWrite(LEDUP, LOW);
+        digitalWrite(LEDDN, HIGH);
+        motorDrv(DN_ACCEL);
+        motorDrv(DN);
+    } else if (updn == STOP)
+        ctrlMove(0);
+    return;
+}
+
 void loop(void) { 
-    if (isMoving) {
-        chkDest();
-        if (isMoving) }
-            getFloor();
-            return;
-		}
-        switch (currFloor) {
-            case 1:
-            digitalWrite(LEDB1, LOW);
-            digitalWrite(LEDF1U, LOW);
-            break;
-
-            case 2:
-            digitalWrite(LEDB2, LOW);
-            if (carStat == UP) digitalWrite(LEDF2U, LOW);
-            else if (carStat == DN) digitalWrite(LEDF2D, LOW);
-            break;
-
-            case 3:
-            digitalWrite(LEDB3, LOW);
-            if (carStat == UP) digitalWrite(LEDF3U, LOW);
-            else if (carStat == DN) digitalWrite(LEDF3D, LOW);
-            break;
-
-            case 4:
-            digitalWrite(LEDB4, LOW);
-            digitalWrite(LEDF4D, LOW);
-            break;
+    if (digitalRead(BTN_EMERGENCY)) {
+        for (int i = 0; i < 4; i++) {
+            arrDest[i] = FALSE;
         }
-        doorDrv();
+        for (int i = 0; i < 6; i++) {
+            arrCall[i] = FALSE;
+        }
+        digitalWrite(LEDF1U, LOW);
+        digitalWrite(LEDF2U, LOW);
+        digitalWrite(LEDF2D, LOW);
+        digitalWrite(LEDF3U, LOW);
+        digitalWrite(LEDF3D, LOW);
+        digitalWrite(LEDF4D, LOW);
+        digitalWrite(LEDB1, LOW);
+        digitalWrite(LEDB2, LOW);
+        digitalWrite(LEDB3, LOW);
+        digitalWrite(LEDB4, LOW);
+        digitalWrite(LIGHT_EMERGENCY, HIGH);
+        arrDest[0] = TRUE;
+        detachInterrupt(0);
+        while (1) {
+            if (isMoving) {
+                ctrlMove(1);
+            } else {
+                strtr();
+            }
+        }
+        attachInterrupt(0, isrBtnCall, RISING);
+        digitalWrite(LIGHT_EMERGENCY, LOW);
+        return;
+    }
+    if (isMoving) {
+        ctrlMove(1);
         return;
     } else {
-        for (int i = 0; i < 4; i++) { /* 움직여야 하는가?, 목적지 입력 확인 */
-            if (arrDest[i]) goto start;
-        }
-        for (int i = 0; i < 6, i++) { /* 움직여야 하는가?, 호출 입력 확인 */
-            if (arrCall[i]) goto start;
-        }
-        /* 대기한다 */
-        digitalWrite(LEDUP, LOW);
-        digitalWrite(LEDDN, LOW);
-        return;
-
-        /* 시동한다  */
-        start:
-        BYTE updn = chkUpDn();
-        if (updn == UP) {
-            digitalWrite(LEDUP, HIGH);
-            digitalWrite(LEDDN, LOW);
-            motorDrv(UP_ACCEL);
-            motorDrv(UP);
-        } else if (updn == DN) {
-            digitalWrite(LEDUP, LOW);
-            digitalWrite(LEDDN, HIGH);
-            motorDrv(DN_ACCEL);
-            motorDrv(DN);
-        }
+        strtr();
         return;
     }
 }
