@@ -1,7 +1,11 @@
 /* Atmega2560 마이크로 컨트롤러는 8비트이므로 기본 데이터 타입은 최적화를 위해 바이트(unsigned char)로 함. */
 
-/* 현재 모든 주석과 코드는 실제 하드웨어에서 테스트를 하지 않았음. 유의 바람 */
-/* 문의 열림과 닫힘을 감지할 센서를 부착하기 어려운 경우 문짝 모터는 일정 스텝만큼 구동하도록 함. */
+/* 
+현재 모든 주석과 코드는 실제 하드웨어에서 테스트를 하지 않았음. 유의 바람
+문의 열림과 닫힘을 감지할 센서를 부착하기 어려운 경우 문짝 모터는 일정 스텝만큼 구동하도록 함.
+네마모터는 시계방향 회전이 역방향 회전인 것으로 보임. 결선에 따라 달라질 수 있으나, 카 모터 시험 코드의 방향은 그렇게 되어 있었음.
+네마모터는 1 스텝이 1.8 ± 5% 이므로, 200스텝 정도 돌리면 한 바퀴 돌아감. 문을 개폐할 때 센서를 사용할 수 없는 경우 스텝각 150~250 사이의 적정값을 찾도록 함.
+*/
 
 /*
 아두이노 메가 핀 번호
@@ -115,6 +119,7 @@ const BYTE fndDigits[] = { 0x03, 0x9F, 0x25, 0x0D, 0x99 }; /* 0~4 */
 const int nemaMainSpd = 40; /* 10~1024, 낮을 수록 빠름 */
 const int nemaMainSlowSpd = 500;
 const int nemaDoorSpd = 500;
+/* const int nemaDoorSteps = 200  */
 
 HCMotor nemaMain;
 HCMotor nemaDoor;
@@ -390,19 +395,19 @@ void preciseMotorCtrl(BYTE floor) { /* 모터 정밀제어 함수 */
 
     switch(floor) {
         case 1:
-        while (digitalRead(IR_SNSR_1)) (void) "무야호"
+        while (!digitalRead(IR_SNSR_1)) (void) "aoeu"
         break;
 
         case 2:
-        while (digitalRead(IR_SNSR_2)) (void) "쌀국수"
+        while (!digitalRead(IR_SNSR_2)) (void) "aoeu"
         break;
 
         case 3:
-        while (digitalRead(IR_SNSR_3)) (void) "뚝배기"
+        while (!digitalRead(IR_SNSR_3)) (void) "aoeu"
         break;
 
         case 4:
-        while (digitalRead(IR_SNSR_4)) (void) "고자라니"
+        while (!digitalRead(IR_SNSR_4)) (void) "aoeu"
         break;
     }
     motorDrv(STOP);
