@@ -1,8 +1,6 @@
 /* Atmega2560 마이크로 컨트롤러는 8비트이므로 기본 데이터 타입은 최적화를 위해 바이트(unsigned char)로 함. */
 
 /* 
-현재 모든 주석과 코드는 실제 하드웨어에서 테스트를 하지 않았음. 유의 바람
-문의 열림과 닫힘을 감지할 센서를 부착하기 어려운 경우 문짝 모터는 일정 스텝만큼 구동하도록 함.
 네마모터는 시계방향 회전이 역방향 회전인 것으로 보임. 결선에 따라 달라질 수 있으나, 카 모터 시험 코드의 방향은 그렇게 되어 있었음.
 네마모터는 1 스텝이 1.8 ± 5% 이므로, 200스텝 정도 돌리면 한 바퀴 돌아감. 문을 개폐할 때 센서를 사용할 수 없는 경우 스텝각 150~250 사이의 적정값을 찾도록 함.
 */
@@ -67,12 +65,6 @@ I2C 통신 핀: 20(SCA), 21(SCL)
 #define LEDF3U 25
 #define LEDF3D 26
 #define LEDF4D 27
-/*
-#define LEDB1 28
-#define LEDB2 29
-#define LEDB3 30
-#define LEDB4 31
-*/
 #define LEDUP 32 /* 운전 방향 표시등 정의 */
 #define LEDDN 33
 
@@ -109,17 +101,9 @@ I2C 통신 핀: 20(SCA), 21(SCL)
 typedef unsigned char BYTE; /* 바이트는 부호 없는 char */
 typedef BYTE BOOL; /* 부울 자료형의 형식을 바이트로 지정 */
 
-/*
-volatile int irDist1 = 0, irDist2 = 0, irDist3 = 0, irDist4 = 0;
-volatile int irDoorClose = 0, irDoorOpen = 0;
-*/
-volatile BOOL arrDest = { FALSE, FALSE, FALSE, FALSE }; /* 목적지 입력 상태 저장용 배열 */
-volatile BOOL arrCall = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE }; 
+volatile BOOL arrDest[] = { FALSE, FALSE, FALSE, FALSE }; /* 목적지 입력 상태 저장용 배열 */
+volatile BOOL arrCall[] = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE }; 
 /* 호출 버튼 상태 저장용 배열, F1U, F2U, F3U, F2D, F3D, F4D 순 */
-/*
-volatile BOOL arrLEDF = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
-volatile BOOL arrLEDB = { FALSE, FALSE, FALSE, FALSE };
-*/
 volatile BYTE spdStat = STOP; /* 정속/감속/가속/저속복귀 상태 기록 */
 volatile BOOL isMoving = FALSE; /* 움직이는가? */
 volatile BYTE carStat = STOP; /* 카 운전 상태(방향) */
@@ -134,6 +118,16 @@ const int nemaDoorSpd = 500;
 
 HCMotor nemaMain;
 HCMotor nemaDoor;
+
+void getFloor(void);
+void motorDrv(BYTE drvMode);
+void doorDrv(BOOL op);
+BOOL chkDest(void);
+BYTE chkUpDn(void);
+void preciseMotorCtrl(BYTE floor);
+void fndDrv(BYTE floorNum);
+void ctrlMove(BYTE mode);
+void strtr(void);
 
 /* 인터럽트 함수 */
 void isrBtnCall(void) { /* 호출 버튼 인터럽트 처리 */
@@ -203,41 +197,68 @@ void setup() {
     pinMode(IR_SNSR_3, INPUT);
     pinMode(IR_SNSR_4, INPUT);
     pinMode(BTN_EMERGENCY, INPUT);
+    pinMode(LIGHT_EMERGENCY, OUTPUT);
     attachInterrupt(0, isrBtnCall, RISING);
     attachInterrupt(1, isrBtnDest, RISING);
     nemaMain.Init();
     nemaMain.attach(0, STEPPER, NEMA_MAIN_STEP, NEMA_MAIN_DIR);
     nemaMain.Steps(0, CONTINUOUS);
-    nemaMain.DutyCycle(0, nemaMainSpd);
+    nemaMain.DutyCycle(0, 0);
     nemaDoor.Init();
     nemaDoor.attach(1, STEPPER, NEMA_DOOR_STEP, NEMA_DOOR_DIR);
     nemaDoor.Steps(1, 190); /* 문 모터는 한 바퀴보다 살짝 덜 돌아가게 설정 */
-    nemaDoor.DutyCycle(1, nemaDoorSpd);
+    nemaDoor.DutyCycle(1, 0);
     getFloor();
 }
 
+void loop(void) { 
+    if (digitalRead(BTN_EMERGENCY)) { /* 비상정지 버튼 입력 */
+        nemaMain.DutyCycle(0, 0);
+        digitalWrite(LIGHT_EMERGENCY, HIGH);
+        while(!digitalRead(BTN_EMERGENCY)) /* 버튼 릴리스 전까지 무한 빈 루프 */
+            (void) "aoeu";
+        digitalWrite(LIGHT_EMERGENCY, LOW); /* 버튼 릴리스 뒤 소등 및 모터 재구동 */
+        if (carStat == UP && spdStat == UP) motorDrv(UP);
+        if (carStat == UP && spdStat == UP_ACCEL) motorDrv(UP);
+        if (carStat == UP && spdStat == UP_SLOW) motorDrv(UP_RECY);
+        if (carStat == UP && spdStat == UP_RECY) motorDrv(UP_RECY);
+        if (carStat == DN && spdStat == DN) motorDrv(DN);
+        if (carStat == DN && spdStat == DN_ACCEL) motorDrv(DN);
+        if (carStat == DN && spdStat == DN_SLOW) motorDrv(DN_RECY);
+        if (carStat == DN && spdStat == DN_RECY) motorDrv(DN_RECY);
+        return;
+    }
+    if (isMoving) {
+        ctrlMove(1);
+        return;
+    } else {
+        strtr();
+        return;
+    }
+}
+
 void getFloor(void) { /* 층수 구하고 FND로 표시하는 함수 */
-    if (digitalRead(IR_SNSR_1) == 1) {
+    if (digitalRead(IR_SNSR_1)) {
         currFloor = 1;
         fndDrv(1);
     }
-    else if (digitalRead(IR_SNSR_2) == 1) {
+    else if (digitalRead(IR_SNSR_2)) {
         currFloor = 2;
         fndDrv(2);
     }
-    else if (digitalRead(IR_SNSR_3) == 1) {
+    else if (digitalRead(IR_SNSR_3)) {
         currFloor = 3;
         fndDrv(3);
     }
-    else if (digitalRead(IR_SNSR_4) == 1) {
+    else if (digitalRead(IR_SNSR_4)) {
         currFloor = 4;
         fndDrv(4);
     }
     /* 센서 고장 시의 운전은 구현되지 않았음 */
-    return;
 }
 
 void motorDrv(BYTE drvMode) { /* 모터 구동 */
+    int spdTmp = 0;
     switch(drvMode) {
         case STOP:
         nemaMain.DutyCycle(0, 0);
@@ -264,7 +285,7 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
 
         /* 목적층/호출위치에 가까워졌을 때 속도를 줄이고 정밀하게 운전 */
         case UP_SLOW:
-        int spdTmp = nemaMainSpd;
+        spdTmp = nemaMainSpd;
         nemaMain.Direction(0, FORWARD);
         while (spdTmp == nemaMainSlowSpd) {
             nemaMain.DutyCycle(0, spdTmp++);
@@ -274,7 +295,7 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
         break;
 
         case UP_ACCEL:
-        int spdTmp = 1000;
+        spdTmp = 1000;
         nemaMain.Direction(0, FORWARD);
         while (spdTmp == nemaMainSpd) {
             nemaMain.DutyCycle(0, spdTmp--);
@@ -284,7 +305,7 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
         break;
 
         case DN_SLOW:
-        int spdTmp = nemaMainSpd;
+        spdTmp = nemaMainSpd;
         nemaMain.Direction(0, REVERSE);
         while (spdTmp == nemaMainSlowSpd) {
             nemaMain.DutyCycle(0, spdTmp++);
@@ -294,7 +315,7 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
         break;
 
         case DN_ACCEL:
-        int spdTmp = 1000;
+        spdTmp = 1000;
         nemaMain.Direction(0, REVERSE);
         while (spdTmp == nemaMainSpd) {
             nemaMain.DutyCycle(0, spdTmp--);
@@ -340,27 +361,27 @@ void doorDrv(BOOL op) { /* 문 구동용 함수 */
 }
 
 BOOL chkDest(void) { /* 현재 층수가 호출된/목적지 층수인지를 확인한다. */
-    if (digitalRead(irDist1) == 1 && (arrDest[0] == TRUE || arrCall[0] == TRUE)) {
+    if (digitalRead(IR_SNSR_1) == 1 && (arrDest[0] == TRUE || arrCall[0] == TRUE)) {
         preciseMotorCtrl(1);
         arrCall[0] = FALSE;
         arrDest[0] = FALSE;
         return TRUE;
     }
-    else if (digitalRead(irDist2) == 1 && (arrDest[1] == TRUE || arrCall[1] == TRUE && carStat == UP || arrCall[3] && carStat == DN)) {
+    else if (digitalRead(IR_SNSR_2) == 1 && (arrDest[1] == TRUE || arrCall[1] == TRUE && carStat == UP || arrCall[3] && carStat == DN)) {
         preciseMotorCtrl(2);
         if (carStat == UP) arrCall[1] = FALSE;
         else if (carStat == DN) arrCall[3] = FALSE;
         arrDest[1] = FALSE;
         return TRUE;
     }
-    else if (digitalRead(irDist3) == 1 && (arrDest[2] == TRUE || arrCall[2] && carStat == UP || arrCall[4] && carStat == DN)) {
+    else if (digitalRead(IR_SNSR_3) == 1 && (arrDest[2] == TRUE || arrCall[2] && carStat == UP || arrCall[4] && carStat == DN)) {
         preciseMotorCtrl(3);
         if (carStat == UP) arrCall[2] = FALSE;
         else if (carStat == DN) arrCall[4] = FALSE;
         arrDest[2] = FALSE;
         return TRUE;
     }
-    else if (digitalRead(irDist4) == 1 && (arrDest[3] == TRUE || arrCall[3] == TRUE)) {
+    else if (digitalRead(IR_SNSR_4) == 1 && (arrDest[3] == TRUE || arrCall[3] == TRUE)) {
         preciseMotorCtrl(4);
         arrCall[5] = FALSE;
         arrDest[3] = FALSE;
@@ -372,19 +393,19 @@ BOOL chkDest(void) { /* 현재 층수가 호출된/목적지 층수인지를 확
 BYTE chkUpDn(void) { /* 상승/하강 결정 함수 */ /* 디버깅 필요 */
     /* 상승? */
     if (carStat != DN) {
-        for (int i = (currFloor - 1), i < 4, i++) {
+        for (int i = (currFloor - 1); i < 4; i++) {
             if (arrDest[i] && i > currFloor) return UP; 
         }
-        for (int i = (currFloor - 1), i < 4, i++) {
+        for (int i = (currFloor - 1); i < 4; i++) {
             if (arrCall[i] && i > currFloor) return UP;
         }
     }
     /* 하강? */
     if (carStat != UP) {
-        for (int i = (currFloor - 1), i >= 0, i--) {
+        for (int i = (currFloor - 1); i >= 0; i--) {
             if (arrDest[i] && i < currFloor) return DN;
         }
-        for (int i = (currFloor - 1), i > 2, i--) {
+        for (int i = (currFloor - 1); i > 2; i--) {
             if (arrCall[i] && i < currFloor) return DN;
         }
     }
@@ -398,19 +419,19 @@ void preciseMotorCtrl(BYTE floor) { /* 모터 정밀제어 함수 */
 
     switch(floor) { /* 센서 입력이 들어올 때까지 무한 빈 루프 */
         case 1:
-        while (!digitalRead(IR_SNSR_1)) (void) "aoeu"
+        while (digitalRead(IR_SNSR_1)) (void) "aoeu";
         break;
 
         case 2:
-        while (!digitalRead(IR_SNSR_2)) (void) "aoeu"
+        while (digitalRead(IR_SNSR_2)) (void) "aoeu";
         break;
 
         case 3:
-        while (!digitalRead(IR_SNSR_3)) (void) "aoeu"
+        while (digitalRead(IR_SNSR_3)) (void) "aoeu";
         break;
 
         case 4:
-        while (!digitalRead(IR_SNSR_4)) (void) "aoeu"
+        while (digitalRead(IR_SNSR_4)) (void) "aoeu";
         break;
     }
     motorDrv(STOP);
@@ -426,7 +447,7 @@ void fndDrv(BYTE floorNum) { /* 7seg 구동 */
 void ctrlMove(BYTE mode) { /* mode 0은 정지(버튼만 눌림), 1은 움직이는 중에 제어 */
     if (!mode) goto drivedoor;
     chkDest();
-    if (isMoving) }
+    if (isMoving) {
         getFloor();
         return;
 	}
@@ -462,7 +483,7 @@ void strtr(void) {
     for (int i = 0; i < 4; i++) { /* 움직여야 하는가?, 목적지 입력 확인 */
         if (arrDest[i]) goto start;
     }
-    for (int i = 0; i < 6, i++) { /* 움직여야 하는가?, 호출 입력 확인 */
+    for (int i = 0; i < 6; i++) { /* 움직여야 하는가?, 호출 입력 확인 */
         if (arrCall[i]) goto start;
     }
     /* 대기한다 */
@@ -485,32 +506,4 @@ void strtr(void) {
         motorDrv(DN);
     } else if (updn == STOP)
         ctrlMove(0);
-    return;
-}
-
-void loop(void) { 
-    if (digitalRead(BTN_EMERGENCY)) { /* 비상정지 버튼 입력 */
-        nemaMain.DutyCycle(0, 0);
-        digitalWrite(LIGHT_EMERGENCY, HIGH);
-        while(!digitalRead(BTN_EMERGENCY)) { /* 버튼 릴리스 전까지 무한 빈 루프 */
-            (void) "aoeu"
-        }
-        digitalWrite(LIGHT_EMERGENCY, LOW); /* 버튼 릴리스 뒤 소등 및 모터 재구동 */
-        if (carStat == UP && spdStat == UP) motorDrv(UP);
-        if (carStat == UP && spdStat == UP_ACCEL) motorDrv(UP);
-        if (carStat == UP && spdStat == UP_SLOW) motorDrv(UP_RECY);
-        if (carStat == UP && spdStat == UP_RECY) motorDrv(UP_RECY);
-        if (carStat == DN && spdStat == DN) motorDrv(DN);
-        if (carStat == DN && spdStat == DN_ACCEL) motorDrv(DN);
-        if (carStat == DN && spdStat == DN_SLOW) motorDrv(DN_RECY);
-        if (carStat == DN && spdStat == DN_RECY) motorDrv(DN_RECY);
-        return;
-    }
-    if (isMoving) {
-        ctrlMove(1);
-        return;
-    } else {
-        strtr();
-        return;
-    }
 }
