@@ -70,8 +70,8 @@ I2C 통신 핀: 20(SCA), 21(SCL)
 
 #define IR_SNSR_1 34 /* 카 위치 감지 거리 센서 정의 */
 #define IR_SNSR_2 35
-#define IR_SNSR_3 36
-#define IR_SNSR_4 37
+#define IR_SNSR_3 37
+#define IR_SNSR_4 36
 
 #define BTN1U 40 /* 층별 호출 버튼 정의 */
 #define BTN2U 41
@@ -112,11 +112,11 @@ volatile BYTE currFloor = 1; /* 현재 위치 */
 volatile BOOL doorStat = CLOSE; /* 문 상태 변수(필요 없을 시 제거) */
 volatile BYTE originalDir = STOP; /* 직전 이동 방향 기록용 변수 */
 
-const BYTE fndDigits[] = { 0x03, 0x9F, 0x25, 0x0D, 0x99 }; /* 0~4 */
+const BYTE fndDigits[] = { 0x03, 0x5F, 0x25, 0x0D, 0x58 }; /* 0~4 */
 const int nemaMainSpd = 40; /* 10~1024, 낮을 수록 빠름 */
-const int nemaMainSlowSpd = 500;
-const int nemaDoorSpd = 500;
-const int nemaDoorSteps = 190; /* 문 모터는 한 바퀴보다 살짝 덜 돌아가게 설정함 */
+const int nemaMainSlowSpd = 100;
+const int nemaDoorSpd = 40;
+const int nemaDoorSteps = 200; /* 문 모터는 한 바퀴보다 살짝 덜 돌아가게 설정함 */
 
 HCMotor nemaMain;
 HCMotor nemaDoor;
@@ -141,11 +141,11 @@ void isrBtnCall(void) { /* 호출 버튼 인터럽트 처리 */
         digitalWrite(LEDF2U, HIGH);
     }
     if (digitalRead(BTN2D)) {
-        arrCall[2] = TRUE;
+        arrCall[3] = TRUE;
         digitalWrite(LEDF2D, HIGH);
     }
     if (digitalRead(BTN3U)) {
-        arrCall[3] = TRUE;
+        arrCall[2] = TRUE;
         digitalWrite(LEDF3U, HIGH);
     }
     if (digitalRead(BTN3D)) {
@@ -228,6 +228,7 @@ void setup() {
 }
 
 void loop(void) { 
+    /* delay(2000); */
     BYTE updn = 0;
     BOOL isDest = FALSE;
     getFloor();
@@ -282,6 +283,31 @@ void loop(void) {
             digitalWrite(LEDF4D, LOW);
             break;
         }
+        getFloor();
+        if ((arrDest[0] || arrCall[0]) && currFloor == 1) {
+            arrDest[0] = FALSE;
+            arrCall[0] = FALSE;
+            digitalWrite(LEDF1U, LOW);
+        } 
+        if ((arrDest[1] || arrCall[1] || arrCall[3]) && currFloor == 2) {
+            arrDest[1] = FALSE;
+            arrCall[1] = FALSE;
+            arrCall[3] = FALSE;
+            digitalWrite(LEDF2U, LOW);
+            digitalWrite(LEDF2D, LOW);
+        } 
+        if ((arrDest[2] || arrCall[2] || arrCall[4]) && currFloor == 3) {
+            arrDest[2] = FALSE;
+            arrCall[2] = FALSE;
+            arrCall[4] = FALSE;
+            digitalWrite(LEDF3U, LOW);
+            digitalWrite(LEDF3D, LOW);
+        } 
+        if ((arrDest[3] || arrCall[5]) && currFloor == 4) {
+            arrDest[3] = FALSE;
+            arrCall[5] = FALSE;
+            digitalWrite(LEDF4D, LOW);
+        }
 
         driveDoor:
         Serial.println("[loop] Driving door...");
@@ -290,7 +316,7 @@ void loop(void) {
             doorDrv(OPEN);
             delay(5000);
             doorDrv(CLOSE);
-            delay(5000);
+            delay(2000);
             Serial.println("[loop] Closed door");
         }
         return;
@@ -304,8 +330,8 @@ void loop(void) {
         }
         Serial.println("[loop] Staying");
         originalDir = STOP;
-        digitalWrite(LEDUP, LOW);
-        digitalWrite(LEDDN, LOW);
+        digitalWrite(LEDUP, HIGH);
+        digitalWrite(LEDDN, HIGH);
         return;
         
         start:
@@ -313,14 +339,14 @@ void loop(void) {
         updn = chkUpDn();
         if (updn == UP) {
             Serial.println("[loop] updn is UP");
-            digitalWrite(LEDUP, HIGH);
-            digitalWrite(LEDDN, LOW);
+            digitalWrite(LEDUP, LOW);
+            digitalWrite(LEDDN, HIGH);
             motorDrv(UP_ACCEL);
             motorDrv(UP);
         } else if (updn == DN) {
             Serial.println("[loop] updn is DN");
-            digitalWrite(LEDUP, LOW);
-            digitalWrite(LEDDN, HIGH);
+            digitalWrite(LEDUP, HIGH);
+            digitalWrite(LEDDN, LOW);
             motorDrv(DN_ACCEL);
             motorDrv(DN);
         } else if (updn == STOP) {
@@ -328,17 +354,26 @@ void loop(void) {
             if ((arrDest[0] || arrCall[0]) && currFloor == 1) {
                 arrDest[0] = FALSE;
                 arrCall[0] = FALSE;
-            } else if ((arrDest[1] || arrCall[1] || arrCall[3]) && currFloor == 2) {
+                digitalWrite(LEDF1U, LOW);
+            } 
+            if ((arrDest[1] || arrCall[1] || arrCall[3]) && currFloor == 2) {
                 arrDest[1] = FALSE;
                 arrCall[1] = FALSE;
                 arrCall[3] = FALSE;
-            } else if ((arrDest[2] || arrCall[2] || arrCall[4]) && currFloor == 3) {
+                digitalWrite(LEDF2U, LOW);
+                digitalWrite(LEDF2D, LOW);
+            } 
+            if ((arrDest[2] || arrCall[2] || arrCall[4]) && currFloor == 3) {
                 arrDest[2] = FALSE;
                 arrCall[2] = FALSE;
                 arrCall[4] = FALSE;
-            } else if ((arrDest[3] || arrCall[5]) && currFloor == 4) {
+                digitalWrite(LEDF3U, LOW);
+                digitalWrite(LEDF3D, LOW);
+            } 
+            if ((arrDest[3] || arrCall[5]) && currFloor == 4) {
                 arrDest[3] = FALSE;
                 arrCall[5] = FALSE;
+                digitalWrite(LEDF4D, LOW);
             }
             goto driveDoor;
         }
@@ -347,19 +382,22 @@ void loop(void) {
 
 void getFloor(void) { /* 층수 구하고 FND로 표시하는 함수 */
     Serial.println("[getFloor] Execution");
-    if (digitalRead(IR_SNSR_1)) {
+    if (!digitalRead(IR_SNSR_1)) {
         Serial.println("[getFloor] Floor is 1");
         currFloor = 1;
         fndDrv(1);
-    } else if (digitalRead(IR_SNSR_2)) {
+    } 
+    if (!digitalRead(IR_SNSR_2)) {
         Serial.println("[getFloor] Floor is 2");
         currFloor = 2;
         fndDrv(2);
-    } else if (digitalRead(IR_SNSR_3)) {
+    } 
+    if (!digitalRead(IR_SNSR_3)) {
         Serial.println("[getFloor] Floor is 3");
         currFloor = 3;
         fndDrv(3);
-    } else if (digitalRead(IR_SNSR_4)) {
+    } 
+    if (!digitalRead(IR_SNSR_4)) {
         Serial.println("[getFloor] Floor is 4");
         currFloor = 4;
         fndDrv(4);
@@ -403,21 +441,21 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
         case UP_SLOW:
         Serial.println("[motorDrv] drvMode is UP_SLOW");
         spdTmp = nemaMainSpd;
-        nemaMain.Direction(0, FORWARD);
+        nemaMain.Direction(0, REVERSE);
         while (spdTmp != nemaMainSlowSpd) {
             nemaMain.DutyCycle(0, spdTmp++);
-            delay(1);
+            delay(6);
         }
         spdStat = UP_SLOW;
         break;
 
         case UP_ACCEL:
         Serial.println("[motorDrv] drvMode is UP_ACCEL");
-        spdTmp = 1000;
-        nemaMain.Direction(0, FORWARD);
+        spdTmp = 200;
+        nemaMain.Direction(0, REVERSE);
         while (spdTmp != nemaMainSpd) {
             nemaMain.DutyCycle(0, spdTmp--);
-            delay(1);
+            delay(5);
         }        
         spdStat = UP_ACCEL;
         break;
@@ -425,21 +463,21 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
         case DN_SLOW:
         Serial.println("[motorDrv] drvMode is DN_SLOW");
         spdTmp = nemaMainSpd;
-        nemaMain.Direction(0, REVERSE);
+        nemaMain.Direction(0, FORWARD);
         while (spdTmp != nemaMainSlowSpd) {
             nemaMain.DutyCycle(0, spdTmp++);
-            delay(1);
+            delay(6);
         }        
         spdStat = DN_SLOW;
         break;
 
         case DN_ACCEL:
         Serial.println("[motorDrv] drvMode is DN_ACCEL");
-        spdTmp = 1000;
-        nemaMain.Direction(0, REVERSE);
+        spdTmp = 200;
+        nemaMain.Direction(0, FORWARD);
         while (spdTmp != nemaMainSpd) {
             nemaMain.DutyCycle(0, spdTmp--);
-            delay(1);
+            delay(5);
         }        
         spdStat = DN_ACCEL;
         break;
@@ -447,14 +485,14 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
         /* 저속 복귀 운전 명령 */
         case UP_RECY:
         Serial.println("[motorDrv] drvMode is UP_RECY");
-        nemaMain.Direction(0, FORWARD);
+        nemaMain.Direction(0, REVERSE);
         nemaMain.DutyCycle(0, nemaMainSlowSpd);
         spdStat = UP_RECY;
         break;
 
         case DN_RECY:
         Serial.println("[motorDrv] drvMode is DN_RECY");
-        nemaMain.Direction(0, REVERSE);
+        nemaMain.Direction(0, FORWARD);
         nemaMain.DutyCycle(0, nemaMainSlowSpd);
         spdStat = DN_RECY;
         break;
@@ -466,7 +504,7 @@ void doorDrv(BOOL op) { /* 문 구동용 함수 */
     if (doorStat == OPEN && op == CLOSE) {
         Serial.println("[doorDrv] Closing");
         /* 문을 닫는다  */
-        nemaDoor.Direction(1, REVERSE);
+        nemaDoor.Direction(1, FORWARD);
         nemaDoor.Steps(1, nemaDoorSteps);
         nemaDoor.DutyCycle(1, nemaDoorSpd);
         doorStat = CLOSE;
@@ -475,7 +513,7 @@ void doorDrv(BOOL op) { /* 문 구동용 함수 */
         return;
     } else if (doorStat == CLOSE && op == OPEN) {
         Serial.println("[doorDrv] Opening");
-        nemaDoor.Direction(1, FORWARD);
+        nemaDoor.Direction(1, REVERSE);
         nemaDoor.Steps(1, nemaDoorSteps);
         nemaDoor.DutyCycle(1, nemaDoorSpd);
         doorStat = OPEN;
@@ -490,28 +528,28 @@ void doorDrv(BOOL op) { /* 문 구동용 함수 */
 
 BOOL chkDest(void) { /* 현재 층수가 호출된/목적지 층수인지를 확인한다. */
     Serial.println("[chkDest] Execution");
-    if (digitalRead(IR_SNSR_1) == 1 && (arrDest[0] == TRUE || arrCall[0] == TRUE)) {
+    if (digitalRead(IR_SNSR_1) == 0 && (arrDest[0] == TRUE || arrCall[0] == TRUE)) {
         Serial.println("[chkDest] SNSR 1 INPUT");
         preciseMotorCtrl(1);
         arrCall[0] = FALSE;
         arrDest[0] = FALSE;
         originalDir = STOP;
         return TRUE;
-    } else if (digitalRead(IR_SNSR_2) == 1 && (arrDest[1] == TRUE || arrCall[1] == TRUE && carStat == UP || arrCall[3] && carStat == DN)) {
+    } else if (digitalRead(IR_SNSR_2) == 0 && (arrDest[1] == TRUE || arrCall[1] == TRUE || arrCall[3] == TRUE)) {
         Serial.println("[chkDest] SNSR 2 INPUT");
         preciseMotorCtrl(2);
         if (originalDir == UP) arrCall[1] = FALSE;
         else if (originalDir == DN) arrCall[3] = FALSE;
         arrDest[1] = FALSE;
         return TRUE;
-    } else if (digitalRead(IR_SNSR_3) == 1 && (arrDest[2] == TRUE || arrCall[2] && carStat == UP || arrCall[4] && carStat == DN)) {
+    } else if (digitalRead(IR_SNSR_3) == 0 && (arrDest[2] == TRUE || arrCall[2] == TRUE || arrCall[4] == TRUE)) {
         Serial.println("[chkDest] SNSR 3 INPUT");
         preciseMotorCtrl(3);
         if (originalDir == UP) arrCall[2] = FALSE;
         else if (originalDir == DN) arrCall[4] = FALSE;
         arrDest[2] = FALSE;
         return TRUE;
-    } else if (digitalRead(IR_SNSR_4) == 1 && (arrDest[3] == TRUE || arrCall[3] == TRUE)) {
+    } else if (digitalRead(IR_SNSR_4) == 0 && (arrDest[3] == TRUE || arrCall[3] == TRUE)) {
         Serial.println("[chkDest] SNSR 4 INPUT");
         preciseMotorCtrl(4);
         arrCall[5] = FALSE;
@@ -527,33 +565,27 @@ BYTE chkUpDn(void) { /* 상승/하강 결정 함수 */ /* 디버깅 필요 */
     Serial.println("[chkUpDn] Execution");
     /* 상승? */
     if (carStat != DN && originalDir != DN) {
-        for (int i = (currFloor - 1); i < 4; i++) {
-            if (arrDest[i] && i > currFloor) {
+        for (int i = currFloor; i < 4; i++) {
+            if (arrDest[i] && i + 1 > currFloor) {
                 Serial.println("[chkUpDn] UP");
                 return UP; 
             }
         }
-        for (int i = (currFloor - 1); i < 4; i++) {
-            if (arrCall[i] && i > currFloor) {
-                Serial.println("[chkUpDn] UP");
-                return UP;
-            }
-        }
+        if ((arrCall[1] || arrCall[2] || arrCall[3] || arrCall[4] || arrCall[5]) && currFloor == 1) return UP;
+        if ((arrCall[2] || arrCall[4] || arrCall[5]) && currFloor == 2) return UP;
+        if ((arrCall[5]) && currFloor == 3) return UP;
     }
     /* 하강? */
     if (carStat != UP && originalDir != UP) {
-        for (int i = (currFloor - 1); i >= 0; i--) {
-            if (arrDest[i] && i < currFloor) {
-                Serial.println("[chkUpDn] UP");
+        for (int i = currFloor; i >= 0; i--) {
+            if (arrDest[i] && i + 1 < currFloor) {
+                Serial.println("[chkUpDn] DN");
                 return DN;
             }
         }
-        for (int i = (currFloor - 1); i > 2; i--) {
-            if (arrCall[i] && i < currFloor) {
-                Serial.println("[chkUpDn] UP");
-                return DN;
-            }
-        }
+        if ((arrCall[0] || arrCall[1] || arrCall[2] || arrCall[3] || arrCall[4]) && currFloor == 4) return DN;
+        if ((arrCall[0] || arrCall[1] || arrCall[3]) && currFloor == 3) return DN;
+        if ((arrCall[0]) && currFloor == 2) return DN;
     }
     /* 이동할 필요 없음 */
     return STOP;
@@ -567,22 +599,23 @@ void preciseMotorCtrl(BYTE floor) { /* 모터 정밀제어 함수 */
     Serial.println("[preciseMotorCtrl] Motor slowed down");
     switch(floor) { /* 센서 입력이 들어올 때까지 무한 빈 루프 */
         case 1:
-        while (!digitalRead(IR_SNSR_1)) (void) "aoeu";
+        while (digitalRead(IR_SNSR_1)) (void) "aoeu";
         break;
 
         case 2:
-        while (!digitalRead(IR_SNSR_2)) (void) "aoeu";
+        while (digitalRead(IR_SNSR_2)) (void) "aoeu";
         break;
 
         case 3:
-        while (!digitalRead(IR_SNSR_3)) (void) "aoeu";
+        while (digitalRead(IR_SNSR_3)) (void) "aoeu";
         break;
 
         case 4:
-        while (!digitalRead(IR_SNSR_4)) (void) "aoeu";
+        while (digitalRead(IR_SNSR_4)) (void) "aoeu";
         break;
     }
     Serial.println("[preciseMotorCtrl] Stopping motor");
+    delay(250);
     motorDrv(STOP);
     return;
 }
@@ -593,39 +626,3 @@ void fndDrv(BYTE floorNum) { /* 7seg 구동 */
     shiftOut(HC595_DATA, HC595_CLOCK, LSBFIRST, fndDigits[floorNum]);
     digitalWrite(HC595_LATCH, HIGH);
 } 
-
-/*
-        if (carStat == DN && (arrDest[0] || arrCall[0]) && currFloor == 1) {
-            preciseMotorCtrl(1);
-            arrDest[0] = FALSE;
-            arrCall[0] = FALSE;
-            originalDir = STOP;
-            goto arrival;
-        } else if (carStat == UP && (arrDest[1] || arrCall[1]) && currFloor == 2) {
-            preciseMotorCtrl(2);
-            arrDest[1] = FALSE;
-            arrCall[1] = FALSE;
-            goto arrival;
-        } else if (carStat == DN && (arrDest[1] || arrCall[3]) && currFloor == 2) {
-            preciseMotorCtrl(2);
-            arrDest[1] = FALSE;
-            arrCall[3] = FALSE;
-            goto arrival;
-        } else if (carStat == UP && (arrDest[2] || arrCall[2]) && currFloor == 3) {
-            preciseMotorCtrl(3);
-            arrDest[2] = FALSE;
-            arrCall[2] = FALSE;
-            goto arrival;
-        } else if (carStat == DN && (arrDest[2] || arrCall[4]) && currFloor == 3) {
-            preciseMotorCtrl(3);
-            arrDest[2] = FALSE;
-            arrCall[4] = FALSE;
-            goto arrival;
-        } else if (carStat == UP && (arrDest[3] || arrCall[5]) && currFloor == 4) {
-            preciseMotorCtrl(4);
-            arrDest[3] = FALSE;
-            arrCall[5] = FALSE;
-            originalDir = STOP;
-            goto arrival;
-        }
-*/
