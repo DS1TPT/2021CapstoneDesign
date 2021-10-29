@@ -1,5 +1,3 @@
-/* 디버그용 파일! 시리얼 통신으로 터미널에 함수 실행 상태를 실시간으로 보냄 */
-
 /* Atmega2560 마이크로 컨트롤러는 8비트이므로 기본 데이터 타입은 최적화를 위해 바이트(unsigned char)로 함. */
 
 /* 
@@ -222,6 +220,11 @@ void setup() {
     nemaDoor.DutyCycle(1, 0);
     getFloor();
     Serial.println("Setup complete");
+    
+    /* 등화류 초기화 */
+    digitalWrite(LIGHT_EMERGENCY, HIGH);
+    digitalWrite(LEDUP, HIGH);
+    digitalWrite(LEDDN, HIGH);
 }
 
 void loop(void) { 
@@ -229,14 +232,18 @@ void loop(void) {
     BOOL isDest = FALSE;
     getFloor();
     if (digitalRead(BTN_EMERGENCY)) { /* 비상정지 버튼 입력 */
-        Serial.println("[loop] Emergency btn input");
+        Serial.println("[loop] lock btn input");
         nemaMain.DutyCycle(0, 0);
-        digitalWrite(LIGHT_EMERGENCY, HIGH);
-        Serial.println("[loop] In infinite loop for Emergency stop");
+        digitalWrite(LIGHT_EMERGENCY, LOW);
+        Serial.println("[loop] In infinite loop(locked)");
+        detachInterrupt(0); /* 버튼 잠금 */
+        detachInterrupt(1);
         while(digitalRead(BTN_EMERGENCY)) /* 버튼 릴리스 전까지 무한 빈 루프 */
             (void) "aoeu";
-        digitalWrite(LIGHT_EMERGENCY, LOW); /* 버튼 릴리스 뒤 소등 및 모터 재구동 */
-        Serial.println("[loop] Infinite loop(emergency stop) ended");
+        digitalWrite(LIGHT_EMERGENCY, HIGH); /* 버튼 릴리스 뒤 소등 및 모터 재구동 */
+        attachInterrupt(0, isrBtnCall, RISING); /* 버튼 잠금 해제 */
+        attachInterrupt(1, isrBtnDest, RISING);
+        Serial.println("[loop] Infinite loop(lock) ended");
         if (carStat == UP && spdStat == UP) motorDrv(UP);
         else if (carStat == UP && spdStat == UP_ACCEL) motorDrv(UP);
         else if (carStat == UP && spdStat == UP_SLOW) motorDrv(UP_RECY);
