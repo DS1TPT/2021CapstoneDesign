@@ -101,7 +101,7 @@ volatile BYTE originalDir = STOP; /* 직전 이동 방향 기록용 변수 */
 
 const BYTE fndDigits[] = { 0x03, 0x5F, 0x25, 0x0D, 0x58 }; /* 0~4 */
 const int nemaMainSpd = 30; /* 10~1024, 낮을 수록 빠름 */
-const int nemaMainSlowSpd = 100; /* 모터 감속 후 속도 */
+const int nemaMainSlowSpd = 70; /* 모터 감속 후 속도 */
 const int nemaDoorSpd = 40; /* 문 모터 속도 */
 const int nemaDoorSteps = 200; /* 문 모터는 한 바퀴보다 살짝 덜 돌아가게 설정함 */
 
@@ -352,24 +352,27 @@ void loop(void) {
 }
 
 BYTE chkArrs(BYTE floor, BYTE dir) { /* 배열을 참조하여 계속 올라갈지 아닐지를 알아내는 함수 */
-    floor--; /* 배열 참조를 위해 floor 값 감산 */
+    //floor--; /* 배열 참조를 위해 floor 값 감산 */
     if (dir == UP) { /* 상승 */
-        for (int i = (floor + 1); i < 3; i++) { /* 호출 확인 */
-            if (arrCall[i]) return GO;
+        for (int i = floor; i < 3; i++) { /* 호출 확인 */
+            if (arrCall[i] && arrCall[floor - 1] == FALSE) return GO;
         }
-        if (arrCall[5]) return GO; /* 마지막 층 */
-        for (int i = (floor + 1); i < 4; i++) { /* 목적지 확인 */
-            if (arrDest[i]) return GO;
+        if (arrCall[5] && arrCall[floor - 1] == FALSE) return GO; /* 마지막 층 */
+        for (int i = floor; i < 4; i++) { /* 목적지 확인 */
+            if (arrDest[i] && arrCall[floor - 1] == FALSE) {
+              
+              return GO;
+            }
         }
         return STOP;
     } else if (dir == DN) { /* 하강 */
         for (int i = (floor + 2); i >= 3; i--) { /* 호출 확인 */
             if (i == 5) continue;
-            if (arrCall[i]) return GO;
+            if (arrCall[i] && arrCall[floor + 1] == FALSE) return GO;
         }
-        if (arrCall[0]) return GO; /* 마지막 층 */
+        if (arrCall[0] && arrCall[floor + 1] == FALSE) return GO; /* 마지막 층 */
         for (int i = 0; i < floor; i++) { /* 목적지 확인 */
-            if (arrDest[i]) return GO;
+            if (arrDest[i] && arrCall[floor + 1] == FALSE) return GO;
         }
         return STOP;
     }
@@ -441,7 +444,7 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
 
         case UP_ACCEL:
         Serial.println("[motorDrv] drvMode is UP_ACCEL");
-        spdTmp = 200;
+        spdTmp = 150;
         nemaMain.Direction(0, REVERSE);
         while (spdTmp != nemaMainSpd) {
             nemaMain.DutyCycle(0, spdTmp--);
@@ -461,7 +464,7 @@ void motorDrv(BYTE drvMode) { /* 모터 구동 */
 
         case DN_ACCEL:
         Serial.println("[motorDrv] drvMode is DN_ACCEL");
-        spdTmp = 200;
+        spdTmp = 150;
         nemaMain.Direction(0, FORWARD);
         while (spdTmp != nemaMainSpd) {
             nemaMain.DutyCycle(0, spdTmp--);
@@ -509,7 +512,7 @@ BOOL chkDest(void) { /* 현재 층수가 호출된/목적지 층수인지를 확
         return TRUE;
     } else if (digitalRead(IR_SNSR_2) == 0 && (arrDest[1] == TRUE || arrCall[1] == TRUE || arrCall[3] == TRUE)) {
         Serial.println("[chkDest] SNSR 2 INPUT");
-        if (chkArrs(2, carStat) == GO) return FALSE;
+        if (chkArrs(2, carStat) == GO && arrDest[1] == FALSE) return FALSE;
         preciseMotorCtrl(2);
         if (originalDir == UP) arrCall[1] = FALSE;
         else if (originalDir == DN) arrCall[3] = FALSE;
@@ -517,7 +520,7 @@ BOOL chkDest(void) { /* 현재 층수가 호출된/목적지 층수인지를 확
         return TRUE;
     } else if (digitalRead(IR_SNSR_3) == 0 && (arrDest[2] == TRUE || arrCall[2] == TRUE || arrCall[4] == TRUE)) {
         Serial.println("[chkDest] SNSR 3 INPUT");
-        if (chkArrs(3, carStat) == GO) return FALSE;
+        if (chkArrs(3, carStat) == GO && arrDest[2] == FALSE) return FALSE;
         preciseMotorCtrl(3);
         if (originalDir == UP) arrCall[2] = FALSE;
         else if (originalDir == DN) arrCall[4] = FALSE;
@@ -613,7 +616,7 @@ void preciseMotorCtrl(BYTE floor) { /* 모터 정밀제어 함수 */
         break;
     }
     Serial.println("[preciseMotorCtrl] Stopping motor");
-    delay(300); /* 센서 입력 위치 보정용 딜레이 */
+    delay(250); /* 센서 입력 위치 보정용 딜레이 */
     motorDrv(STOP);
     return;
 }
