@@ -231,7 +231,7 @@ void loop(void) {
     BYTE updn = 0;
     BOOL isDest = FALSE;
     getFloor();
-    if (digitalRead(BTN_LOCK)) { /* 잠금 버튼 입력 */
+    if (digitalRead(BTN_LOCK) && carStat == STOP) { /* 잠금 버튼 입력 */
         Serial.println("[loop] lock btn input");
         nemaMain.DutyCycle(0, 0);
         digitalWrite(LIGHT_EMERGENCY, LOW);
@@ -277,6 +277,36 @@ void loop(void) {
             break;
         }
         carStat = STOP;
+
+        if (chkUpDn() == STOP) {
+            Serial.println("[loop] (Arrival) updn is STOP");
+            if ((arrDest[0] || arrCall[0]) && currFloor == 1) {
+                arrDest[0] = FALSE;
+                arrCall[0] = FALSE;
+                digitalWrite(LEDF1U, LOW);
+            } 
+            if ((arrDest[1] || arrCall[1] || arrCall[3]) && currFloor == 2) {
+                arrDest[1] = FALSE;
+                arrCall[1] = FALSE;
+                arrCall[3] = FALSE;
+                digitalWrite(LEDF2U, LOW);
+                digitalWrite(LEDF2D, LOW);
+            } 
+            if ((arrDest[2] || arrCall[2] || arrCall[4]) && currFloor == 3) {
+                arrDest[2] = FALSE;
+                arrCall[2] = FALSE;
+                arrCall[4] = FALSE;
+                digitalWrite(LEDF3U, LOW);
+                digitalWrite(LEDF3D, LOW);
+            } 
+            if ((arrDest[3] || arrCall[5]) && currFloor == 4) {
+                arrDest[3] = FALSE;
+                arrCall[5] = FALSE;
+                digitalWrite(LEDF4D, LOW);
+            }
+            originalDir = STOP;
+            carStat = STOP;
+        }
         
         driveDoor:
         Serial.println("[loop] Driving door...");
