@@ -1,7 +1,7 @@
 # elevator_project
 4층 엘리베이터 모형 졸작 프로젝트 파일 저장소
 
-HCMotor 라이브러리가 필요 →→ [HCMotor 라이브러리 깃허브 저장소](https://github.com/HobbyComponents/HCMotor)
+HCMotor 라이브러리가 필요함 →→ [HCMotor 라이브러리 깃허브 저장소](https://github.com/HobbyComponents/HCMotor)
 
 ※ 프로그램 개발을 끝냄
 
